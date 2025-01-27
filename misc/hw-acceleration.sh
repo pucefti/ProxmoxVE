@@ -5,7 +5,7 @@
 # License: MIT
 # https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Execute within the Proxmox shell
-# bash -c "$(wget -qLO - https://github.com/community-scripts/ProxmoxVE/raw/main/misc/hw-acceleration.sh)"
+# bash -c "$(wget -qLO - https://github.com/pucefti/ProxmoxVE/raw/main/misc/hw-acceleration.sh)"
 
 set -e
 function header_info {
@@ -85,7 +85,7 @@ lxc.mount.entry: /dev/dri dev/dri none bind,optional,create=dir
 lxc.mount.entry: /dev/dri/renderD128 dev/dri/renderD128 none bind,optional,create=file
 EOF
 
-read -r -p "Do you need the intel-media-va-driver-non-free driver (Debian 12 only)? <y/N> " prompt
+read -r -p "Do you need the intel-media-va-driver-non-free (Debian 12 only and Gen 8+)? <y/N> " prompt
 if [[ ${prompt,,} =~ ^(y|yes)$ ]]; then
   header_info
   msg_info "Installing Hardware Acceleration (non-free)"
@@ -104,10 +104,30 @@ EOF"
   pct exec ${privileged_container} -- bash -c "silent() { \"\$@\" >/dev/null 2>&1; } && $STD apt-get update && $STD apt-get install -y intel-media-va-driver-non-free ocl-icd-libopencl1 intel-opencl-icd vainfo intel-gpu-tools && $STD adduser \$(id -u -n) video && $STD adduser \$(id -u -n) render"
   msg_ok "Installed Hardware Acceleration (non-free)"
 else
-  header_info
-  msg_info "Installing Hardware Acceleration"
-  pct exec ${privileged_container} -- bash -c "silent() { \"\$@\" >/dev/null 2>&1; } && $STD apt-get install -y va-driver-all ocl-icd-libopencl1 intel-opencl-icd vainfo intel-gpu-tools && chgrp video /dev/dri && chmod 755 /dev/dri && $STD adduser \$(id -u -n) video && $STD adduser \$(id -u -n) render"
-  msg_ok "Installed Hardware Acceleration"
+  read -r -p "Do you need the i965-va-driver-shaders (Debian 12 only and older than Gen 9)? <y/N> " prompt
+  if [[ ${prompt,,} =~ ^(y|yes)$ ]]; then
+    header_info
+    msg_info "Installing Hardware Acceleration (non-free)"
+    pct exec ${privileged_container} -- bash -c "cat <<EOF >/etc/apt/sources.list.d/non-free.list
+
+deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+deb-src http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
+
+deb http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+deb-src http://deb.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+
+deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+deb-src http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
+EOF"
+
+    pct exec ${privileged_container} -- bash -c "silent() { \"\$@\" >/dev/null 2>&1; } && $STD apt-get update && $STD apt-get install -y i965-va-driver-shaders ocl-icd-libopencl1 intel-opencl-icd vainfo intel-gpu-tools && $STD adduser \$(id -u -n) video && $STD adduser \$(id -u -n) render"
+    msg_ok "Installed Hardware Acceleration (non-free)"
+  else
+    header_info
+    msg_info "Installing Hardware Acceleration"
+    pct exec ${privileged_container} -- bash -c "silent() { \"\$@\" >/dev/null 2>&1; } && $STD apt-get install -y va-driver-all ocl-icd-libopencl1 intel-opencl-icd vainfo intel-gpu-tools && chgrp video /dev/dri && chmod 755 /dev/dri && $STD adduser \$(id -u -n) video && $STD adduser \$(id -u -n) render"
+    msg_ok "Installed Hardware Acceleration"
+  fi
 fi
 sleep 1
 whiptail --backtitle "Proxmox VE Helper Scripts" --msgbox --title "Added tools" "vainfo, execute command 'vainfo'\nintel-gpu-tools, execute command 'intel_gpu_top'" 8 58
